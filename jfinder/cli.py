@@ -7,13 +7,12 @@ keep rich output on stderr.
 from __future__ import annotations
 
 import os
-from importlib import resources
-from pathlib import Path
 
 import typer
 from rich.console import Console
 
 from jfinder import __version__
+from jfinder.data import DataError, index_meta
 
 app = typer.Typer(
     name="jfinder",
@@ -24,8 +23,6 @@ console = Console()
 
 #: Default NIM model id; overridable via JFINDER_MODEL or --model (find).
 DEFAULT_MODEL = "deepseek-ai/deepseek-v3.1"
-#: Bundled journal index; produced by scripts/build_index.py.
-INDEX_PATH: Path = Path(str(resources.files("jfinder") / "data")) / "journals.parquet"
 
 
 def _key_status() -> tuple[str, str]:
@@ -67,19 +64,18 @@ def info() -> None:
     """Show index date, journal count, model and API key status."""
     console.print(f"[bold]jfinder[/bold] v{__version__}")
 
-    if INDEX_PATH.exists():
-        try:
-            import pandas as pd
-
-            meta = pd.read_parquet(INDEX_PATH, columns=["built_at"])
-            built = str(meta["built_at"].iloc[0])
-            console.print(f"Index: {len(meta):,} journals (built {built})")
-        except Exception as exc:  # noqa: BLE001 — user-facing error, never a raw traceback
-            console.print(f"[red]Index unreadable:[/red] {exc}")
-            console.print("  Rebuild it: python scripts/build_index.py")
+    try:
+        meta = index_meta()
+    except DataError as exc:
+        console.print(f"[red]{exc}[/red]")
+        console.print("  Rebuild it: python scripts/build_index.py")
     else:
-        console.print("Index: not built yet")
-        console.print("  Build it: python scripts/build_index.py")
+        if meta is None:
+            console.print("Index: not built yet")
+            console.print("  Build it: python scripts/build_index.py")
+        else:
+            count, built = meta
+            console.print(f"Index: {count:,} journals (built {built})")
 
     console.print(f"Model: {os.environ.get('JFINDER_MODEL', DEFAULT_MODEL)}")
     status, hint = _key_status()
