@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# Legacy prototype artifacts — never enter the repo
+data/scimagojr.csv
+results*.csv
