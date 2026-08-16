@@ -1,6 +1,6 @@
 # jfinder
 
-Abstract'tan yayına uygun dergi öneren, yerel veri tabanlı CLI aracı — a local-data-grounded CLI that suggests target journals for your paper abstract.
+A CLI that suggests target journals for your paper abstract, grounded in local OpenAlex data.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Data: OpenAlex CC0](https://img.shields.io/badge/data-OpenAlex%20CC0-green.svg)](DATA.md)
