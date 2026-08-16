@@ -121,7 +121,9 @@ derginin aims & scope'unu kendi sitesinden doğrulayın.
 <summary>🇬🇧 English</summary>
 
 `jfinder` suggests target journals for a paper abstract, grounded in local
-OpenAlex data. The LLM never picks journals: it only (a) extracts a structured
+OpenAlex data.
+
+The LLM never picks journals: it only (a) extracts a structured
 profile from the abstract and (b) reranks candidates found by local BM25
 search. Candidates always come from the bundled `journals.parquet`. The LLM
 layer is an optional refinement — the tool works with `--offline` and no API
@@ -165,6 +167,27 @@ jfinder find --json | jq '.journals[].name'   # JSON output (stdout)
 jfinder find --report        # plain-text list: full journal names, no table
 jfinder key                  # stored API key status (prompted on first run)
 jfinder info                 # index date, journal count, model, key status
+```
+
+### Example output
+
+```
+Top 3 target journals
+┏━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━┳━━━━━┳━━━━━━━━━━━━━━┳━━━━━┓
+┃ # ┃ Journal                ┃ Q  ┃ Fit ┃ Cost         ┃ Flags┃
+┡━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━╇━━━━━╇━━━━━━━━━━━━━━╇━━━━━┩
+│ 1 │ JMIR Medical Informat.  │ Q1 │  95 │ OA  $2,300   │ DOAJ │
+│ 2 │ JAMIA                   │ Q1 │  90 │ Subscription │ hybrid OA possible │
+│ 3 │ npj Digital Medicine    │ Q1 │  88 │ OA  $3,590   │ DOAJ │
+└───┴────────────────────────┴────┴─────┴──────────────┴─────┘
+
+1. JMIR Medical Informatics                          fit 95
+   ▸ High relevance to clinical informatics and ML in healthcare...
+   ⚠ May have a slower first decision than specialized journals.
+
+  ⚠ 11 candidates removed as unverified (show with --show-flagged)
+  Index built 2026-08-16 · APC data from OpenAlex/DOAJ, list prices only
+  Always verify aims & scope on the journal site before submitting.
 ```
 
 ### Filters
