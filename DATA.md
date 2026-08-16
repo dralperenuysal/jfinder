@@ -1,55 +1,56 @@
-# DATA.md — Veri kaynakları ve şema
+# DATA.md — Data sources and schema
 
-## Kaynak
+## Source
 
-`jfinder/data/journals.parquet` dosyası **OpenAlex** `/sources` endpoint'inden
-üretilir. OpenAlex verisi **CC0** lisanslıdır.
+`jfinder/data/journals.parquet` is built from the **OpenAlex** `/sources`
+endpoint. OpenAlex data is licensed **CC0**.
 
 - Endpoint: `https://api.openalex.org/sources`
-- Filtre: `type:journal,works_count:>100`
-- Sayfalama: cursor pagination, 200 kayıt/sayfa
-- Üretim scripti: `scripts/build_index.py` (runtime'da çağrılmaz)
-- **Çekilme tarihi: 2026-08-16** (122.851 dergi)
-- Yeniden üretme: `python scripts/build_index.py`
+- Filter: `type:journal,works_count:>100`
+- Pagination: cursor pagination, 200 records/page
+- Build script: `scripts/build_index.py` (never called at runtime)
+- **Retrieval date: 2026-08-16** (122,851 journals)
+- Rebuild: `python scripts/build_index.py`
 
-Seçilen alanlar: `id, display_name, issn_l, issn, host_organization_name,
+Selected fields: `id, display_name, issn_l, issn, host_organization_name,
 country_code, topics, summary_stats, works_count, is_oa, is_in_doaj, apc_usd`.
 
-## Şema
+## Schema
 
-| kolon | tip | açıklama |
+| column | type | description |
 |---|---|---|
 | `openalex_id` | str | `S137773608` |
-| `name` | str | dergi adı |
+| `name` | str | journal name |
 | `issn_l` | str | linking ISSN |
-| `issn` | list[str] | tüm ISSN'ler |
-| `publisher` | str | host organization adı (null olabilir) |
-| `country` | str | ISO-2 (null olabilir) |
-| `topics` | list[str] | konu etiketleri (BM25 corpus'u) |
+| `issn` | list[str] | all ISSNs |
+| `publisher` | str | host organization name (may be null) |
+| `country` | str | ISO-2 (may be null) |
+| `topics` | list[str] | topic labels (BM25 corpus) |
 | `h_index` | int | OpenAlex h-index |
-| `citedness_2y` | float | 2-yıllık ortalama atıf |
-| `works_count` | int | toplam yayın sayısı |
-| `quartile` | str | `Q1`–`Q4`, alan-içi hesaplanmış |
+| `citedness_2y` | float | 2-year mean citedness |
+| `works_count` | int | total works |
+| `quartile` | str | `Q1`–`Q4`, computed within field |
 | `is_oa` | bool | |
-| `in_doaj` | bool | OpenAlex `is_in_doaj` alanı |
-| `apc_usd` | float | null = **bilinmiyor** (ücretsiz değil) |
-| `built_at` | str | ISO tarih; tüm satırlarda aynı |
+| `in_doaj` | bool | OpenAlex `is_in_doaj` field |
+| `apc_usd` | float | null = **unknown** (not free) |
+| `built_at` | str | ISO date; identical across all rows |
 
-## Türetilmiş alanlar
+## Derived fields
 
-- **Quartile**: birincil topic'e (ilk topic) göre grupla, her grupta `h_index`
-  üzerinden `qcut(4)`. Dörtten az farklı değere sahip gruplarda `Q4` kabul edilir.
-- **Maliyet sınıfı** (`jfinder/data.py` → `cost_class`): `oa_paid` (OA, yazar
-  öder), `diamond` (OA + DOAJ + APC yok/0), `oa_unknown` (OA ama APC bilgisi
-  yok — çıktıda "APC bilinmiyor", asla "ücretsiz" denmez), `subscription`
-  (hybrid OA seçeneği olabilir).
-- **Unverified bayrağı** (`flag`): DOAJ'da kayıtlı olmayan, OA, APC > $1500 ve
-  h-index < 15 olan dergiler için sezgisel bir **uyarıdır**, suçlama değildir.
+- **Quartile**: group by primary topic (first topic), then `qcut(4)` on
+  `h_index` within each group. Groups with fewer than four distinct values
+  default to `Q4`.
+- **Cost class** (`jfinder/data.py` → `cost_class`): `oa_paid` (OA, author
+  pays), `diamond` (OA + DOAJ + no/zero APC), `oa_unknown` (OA but APC unknown
+  — displayed as "APC unknown", never "free"), `subscription` (a hybrid OA
+  option may exist).
+- **Unverified flag** (`flag`): a heuristic *warning*, not an accusation, for
+  journals that are OA, not in DOAJ, with APC > $1,500 and h-index < 15.
 
-## Uyarılar
+## Warnings
 
-- APC fiyatları list fiyatlarıdır (OpenAlex/DOAJ); gerçek fiyat derginin
-  sitesinden teyit edilmelidir.
-- **SCImago kaynaklı hiçbir kolon bu repoda yer almaz** (SJR, SJR quartile,
-  Scimago kategorileri, cites-per-doc). SCImago verisi non-commercial kısıtlıdır
-  ve MIT lisansıyla çelişir.
+- APC prices are list prices (OpenAlex/DOAJ); verify actual prices on the
+  journal's website.
+- **No SCImago-derived columns are present in this repository** (SJR, SJR
+  quartile, Scimago categories, cites-per-doc). SCImago data is
+  non-commercial-only and conflicts with the MIT license.
