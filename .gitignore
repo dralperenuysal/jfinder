@@ -27,3 +27,4 @@ AGENTS.md
 
 # Manual test scenarios (local only)
 mock/
+run_mock_compare.sh
