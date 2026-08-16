@@ -12,6 +12,9 @@ build/
 # Legacy prototype scripts and raw data — archived, never tracked
 archive/
 
+# Local tool output, never tracked
+graphify-out/
+
 # Agent runtime state
 .codewhale/
 
