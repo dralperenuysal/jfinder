@@ -12,7 +12,7 @@ from rich.table import Table
 console = Console()
 
 STALE_AFTER_DAYS = 365
-_NAME_WIDTH = 30
+_NAME_WIDTH = 48
 
 
 def cost_label(row: pd.Series) -> str:
@@ -46,14 +46,16 @@ def table_for(results: pd.DataFrame, top_k: int) -> Table:
         header_style="bold",
         title_justify="left",
     )
-    for column in ("#", "Journal", "Q", "Fit", "Cost", "Flags"):
-        table.add_column(column, no_wrap=(column in {"#", "Q", "Fit"}))
+    table.add_column("#", no_wrap=True)
+    table.add_column("Journal", no_wrap=True, overflow="ellipsis", max_width=_NAME_WIDTH)
+    for column in ("Q", "Fit"):
+        table.add_column(column, no_wrap=True)
+    for column in ("Cost", "Flags"):
+        table.add_column(column)
     for position, (_, row) in enumerate(results.head(top_k).iterrows(), start=1):
-        name = str(row["name"])
-        display = name if len(name) <= _NAME_WIDTH else name[:_NAME_WIDTH - 1] + "…"
         table.add_row(
             str(position),
-            display,
+            str(row["name"]),
             str(row["quartile"]),
             str(row["fit"]),
             cost_label(row),
@@ -108,6 +110,21 @@ def to_json(
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
+def _print_footer(removed: int, built_at: str | None) -> None:
+    if removed:
+        console.print(
+            f"  ⚠ {removed} candidates removed as unverified "
+            "(show with --show-flagged)"
+        )
+    if is_stale(built_at):
+        console.print(
+            "  ⚠ Index built more than 12 months ago — "
+            "consider rebuilding: python scripts/build_index.py"
+        )
+    console.print(f"  Index built {built_at} · APC data from OpenAlex/DOAJ, list prices only")
+    console.print("  Always verify aims & scope on the journal site before submitting.")
+
+
 def print_results(
     results: pd.DataFrame,
     top_k: int,
@@ -130,15 +147,31 @@ def print_results(
                 console.print(f"   ▸ {why}")
             if risk:
                 console.print(f"   ⚠ {risk}")
-    if removed:
+    _print_footer(removed, built_at)
+
+
+def print_report(
+    results: pd.DataFrame,
+    top_k: int,
+    *,
+    removed: int = 0,
+    built_at: str | None = None,
+    reasons: bool = False,
+) -> None:
+    """Plain-text list report: full journal names, no table truncation."""
+    console.print(f"Top {top_k} target journals\n")
+    for position, (_, row) in enumerate(results.head(top_k).iterrows(), start=1):
+        console.print(f"{position}. {row['name']}")
         console.print(
-            f"  ⚠ {removed} candidates removed as unverified "
-            "(show with --show-flagged)"
+            f"   {row['quartile']} · Fit {row['fit']} · "
+            f"{cost_label(row)}" + (f" · {flags}" if (flags := flags_for(row)) else "")
         )
-    if is_stale(built_at):
-        console.print(
-            "  ⚠ Index built more than 12 months ago — "
-            "consider rebuilding: python scripts/build_index.py"
-        )
-    console.print(f"  Index built {built_at} · APC data from OpenAlex/DOAJ, list prices only")
-    console.print("  Always verify aims & scope on the journal site before submitting.")
+        if reasons:
+            why = str(row.get("_why", "")).strip()
+            risk = str(row.get("_risk", "")).strip()
+            if why:
+                console.print(f"   ▸ {why}")
+            if risk:
+                console.print(f"   ⚠ {risk}")
+        console.print("")
+    _print_footer(removed, built_at)

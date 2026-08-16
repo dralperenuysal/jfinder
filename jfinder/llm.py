@@ -14,6 +14,8 @@ from typing import Any
 
 from openai import OpenAI
 
+from jfinder import config as jconfig
+
 #: Default NIM model id; overridable via JFINDER_MODEL or --model (AGENTS.md §7).
 #: The NIM catalog changes often; deepseek-v3.1 was retired, v4-flash is its successor.
 DEFAULT_MODEL = "deepseek-ai/deepseek-v4-flash-0731"
@@ -45,12 +47,12 @@ def model_id() -> str:
 
 def client() -> OpenAI:
     """NIM client; a missing key is a fatal, user-facing error (AGENTS.md §7)."""
-    api_key = os.environ.get("NVIDIA_API_KEY")
+    api_key = jconfig.get_key()
     if not api_key:
         raise LLMError(
             "NVIDIA_API_KEY is not set.\n"
             "  Get a free key: https://build.nvidia.com  →  Get API Key\n"
-            "  export NVIDIA_API_KEY=nvapi-...",
+            + "  Set it: jfinder key --set   (or: export NVIDIA_API_KEY=nvapi-...)",
             fatal=True,
         )
     return OpenAI(base_url=BASE_URL, api_key=api_key, timeout=TIMEOUT)

@@ -10,6 +10,8 @@ import pytest
 from typer.testing import CliRunner
 
 from jfinder import cache as jcache
+from jfinder import cli as jcli
+from jfinder import config as jconfig
 from jfinder import data as jdata
 from jfinder import llm as jllm
 from jfinder.cli import app
@@ -29,6 +31,12 @@ def fixture_index(monkeypatch: pytest.MonkeyPatch) -> None:
 def isolated_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Point the cache at a per-test directory so runs never pollute each other."""
     monkeypatch.setattr(jcache, "cache_dir", lambda: tmp_path)
+
+
+@pytest.fixture()
+def isolated_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Keep key tests away from the real user config."""
+    monkeypatch.setattr(jconfig, "config_dir", lambda: tmp_path)
 
 
 @pytest.fixture()
@@ -170,14 +178,80 @@ def test_find_online_shows_llm_reasons(
     assert "low" in result.stdout
 
 
-def test_find_online_missing_key_is_fatal(
-    fixture_index: None, isolated_cache: None, monkeypatch: pytest.MonkeyPatch
+def test_find_online_missing_key_falls_back_to_offline(
+    fixture_index: None,
+    isolated_cache: None,
+    isolated_config: None,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     result = runner.invoke(app, ["find", "-t", GOOD_TEXT])
+    assert result.exit_code == 0
+    assert "build.nvidia.com" in result.stdout
+    assert "Continuing offline" in result.stdout
+    assert "Top 5 target journals" in result.stdout
+
+
+def test_find_online_first_run_prompt_saves_key(
+    fixture_index: None,
+    isolated_cache: None,
+    isolated_config: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    monkeypatch.setattr(jcli, "_stdin_interactive", lambda: True)
+    monkeypatch.setattr(jllm, "profile", lambda text, model=None: PROFILE)
+    monkeypatch.setattr(
+        jllm,
+        "rerank",
+        lambda profile, candidates, notes, k, model=None: {
+            "picks": [{"i": 0, "fit": 91, "why": "w", "risk": "r"}]
+        },
+    )
+    result = runner.invoke(app, ["find", "-t", GOOD_TEXT], input="nvapi-test-456\n")
+    assert result.exit_code == 0
+    assert "Key saved" in result.stdout
+    assert jconfig.get_key() == "nvapi-test-456"
+
+
+def test_find_online_empty_prompt_falls_back_offline(
+    fixture_index: None,
+    isolated_cache: None,
+    isolated_config: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    monkeypatch.setattr(jcli, "_stdin_interactive", lambda: True)
+    result = runner.invoke(app, ["find", "-t", GOOD_TEXT], input="\n")
+    assert result.exit_code == 0
+    assert jconfig.get_key() is None
+    assert "Top 5 target journals" in result.stdout
+
+
+def test_key_command_status_set_remove(isolated_config: None) -> None:
+    result = runner.invoke(app, ["key"])
+    assert result.exit_code == 0
+    assert "not set" in result.stdout
+    assert "build.nvidia.com" in result.stdout
+
+    result = runner.invoke(app, ["key", "--set"], input="nvapi-test-123\n")
+    assert result.exit_code == 0
+    assert jconfig.get_key() == "nvapi-test-123"
+
+    result = runner.invoke(app, ["key"])
+    assert "set (config)" in result.stdout
+    assert "nvapi-test-123" not in result.stdout  # masked display
+
+    result = runner.invoke(app, ["key", "--remove"])
+    assert result.exit_code == 0
+    assert jconfig.get_key() is None
+
+
+def test_key_set_with_empty_input_changes_nothing(isolated_config: None) -> None:
+    result = runner.invoke(app, ["key", "--set"], input="\n")
     assert result.exit_code != 0
-    assert "NVIDIA_API_KEY is not set" in result.stdout
-    assert "https://build.nvidia.com" in result.stdout
+    assert "No key entered" in result.stdout
+    assert jconfig.get_key() is None
 
 
 def test_find_online_llm_failure_falls_back_to_offline(

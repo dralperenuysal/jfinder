@@ -6,7 +6,14 @@ from types import SimpleNamespace
 
 import pytest
 
+from jfinder import config as jconfig
 from jfinder import llm as jllm
+
+
+@pytest.fixture()
+def isolated_config(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Keep key tests away from the real user config."""
+    monkeypatch.setattr(jconfig, "config_dir", lambda: tmp_path)
 
 
 def _fake_client(text: str) -> SimpleNamespace:
@@ -131,16 +138,17 @@ def test_sanitize_picks_drops_out_of_range_and_duplicates() -> None:
 # --- key handling ---
 
 
-def test_client_missing_key_is_fatal(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_client_missing_key_is_fatal(isolated_config: None, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     with pytest.raises(jllm.LLMError) as excinfo:
         jllm.client()
     assert excinfo.value.fatal
     assert "NVIDIA_API_KEY" in str(excinfo.value)
     assert "https://build.nvidia.com" in str(excinfo.value)
+    assert "jfinder key --set" in str(excinfo.value)
 
 
-def test_profile_without_key_raises_fatal(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_profile_without_key_raises_fatal(isolated_config: None, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     with pytest.raises(jllm.LLMError) as excinfo:
         jllm.profile("an abstract")

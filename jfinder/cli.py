@@ -17,6 +17,7 @@ from rich.console import Console
 
 from jfinder import __version__
 from jfinder import cache as jcache
+from jfinder import config as jconfig
 from jfinder import data as jdata
 from jfinder import input as jinput
 from jfinder import llm as jllm
@@ -36,13 +37,48 @@ console = Console()
 
 def _key_status() -> tuple[str, str]:
     """Return (status, hint) for the NVIDIA API key."""
-    if os.environ.get("NVIDIA_API_KEY"):
-        return "set", ""
+    if jconfig.get_key():
+        source = "env" if os.environ.get("NVIDIA_API_KEY") else "config"
+        return f"set ({source})", ""
     return (
         "not set",
         "  Get a free key: https://build.nvidia.com  →  Get API Key\n"
-        + "  export NVIDIA_API_KEY=nvapi-...",
+        + "  Store it: jfinder key --set   (or: export NVIDIA_API_KEY=nvapi-...)",
     )
+
+
+def _stdin_interactive() -> bool:
+    try:
+        return bool(sys.stdin.isatty())
+    except AttributeError:
+        return False
+
+
+def _ensure_api_key(out_console: Console) -> bool:
+    """Return True when an API key is available; otherwise offer the build page.
+
+    Interactive terminals get a paste prompt (the key is stored with 0600
+    permissions); non-interactive sessions get the hint only. Returns False
+    to signal the caller to fall back to offline ranking — the key is never
+    mandatory.
+    """
+    if jconfig.get_key():
+        return True
+    out_console.print("[yellow]No NVIDIA_API_KEY found.[/yellow]")
+    out_console.print("  Get a free key: https://build.nvidia.com  →  Get API Key")
+    if _stdin_interactive():
+        pasted = typer.prompt(
+            "Paste your NVIDIA_API_KEY (Enter to continue offline)",
+            hide_input=True,
+            default="",
+            show_default=False,
+        ).strip()
+        if pasted:
+            jconfig.set_key(pasted)
+            out_console.print("[green]Key saved.[/green] Change it with: jfinder key")
+            return True
+    out_console.print("  Store one later with: jfinder key --set")
+    return False
 
 
 def _version_callback(value: bool) -> None:
@@ -154,17 +190,44 @@ def _render(
     removed: int,
     built_at: str,
     json_mode: bool,
+    report: bool = False,
     reasons: bool = False,
 ) -> None:
-    """Dispatch to JSON (stdout) or rich table — the single output decision point."""
+    """Dispatch to JSON (stdout), plain-text report, or rich table."""
     if json_mode:
         sys.stdout.write(
             jrender.to_json(results, top_k, removed=removed, built_at=built_at) + "\n"
+        )
+    elif report:
+        jrender.print_report(
+            results, top_k, removed=removed, built_at=built_at, reasons=reasons
         )
     else:
         jrender.print_results(
             results, top_k, removed=removed, built_at=built_at, reasons=reasons
         )
+
+
+def _render_offline(
+    filtered: pd.DataFrame,
+    sections: dict[str, object],
+    top_k: int,
+    *,
+    removed: int,
+    built_at: str,
+    json_mode: bool,
+    report: bool = False,
+) -> None:
+    """BM25 over the abstract's own words, then render (offline ranking)."""
+    short = jretrieve.shortlist(filtered, _offline_profile(sections), n=40)
+    _render(
+        _with_fit(short),
+        top_k,
+        removed=removed,
+        built_at=built_at,
+        json_mode=json_mode,
+        report=report,
+    )
 
 
 @app.command()
@@ -204,6 +267,9 @@ def find(
     ] = False,
     json_mode: Annotated[
         bool, typer.Option("--json", help="JSON on stdout; rich output on stderr.")
+    ] = False,
+    report: Annotated[
+        bool, typer.Option("--report", help="Plain-text list report: full journal names, no table.")
     ] = False,
     no_cache: Annotated[
         bool, typer.Option("--no-cache", help="Skip the result cache.")
@@ -245,9 +311,19 @@ def find(
     built_at = str(filtered["built_at"].iloc[0])
 
     if offline:
-        short = jretrieve.shortlist(filtered, _offline_profile(sections), n=40)
-        _render(
-            _with_fit(short), top_k, removed=removed, built_at=built_at, json_mode=json_mode
+        _render_offline(
+            filtered, sections, top_k, removed=removed, built_at=built_at,
+            json_mode=json_mode, report=report,
+        )
+        return
+
+    if not _ensure_api_key(out_console):
+        out_console.print(
+            "[yellow]Continuing offline — without LLM ranking the results are less targeted.[/yellow]"
+        )
+        _render_offline(
+            filtered, sections, top_k, removed=removed, built_at=built_at,
+            json_mode=json_mode, report=report,
         )
         return
 
@@ -304,9 +380,9 @@ def find(
         out_console.print(
             f"[yellow]LLM failed — falling back to offline ranking ({exc})[/yellow]"
         )
-        short = jretrieve.shortlist(filtered, _offline_profile(sections), n=40)
-        _render(
-            _with_fit(short), top_k, removed=removed, built_at=built_at, json_mode=json_mode
+        _render_offline(
+            filtered, sections, top_k, removed=removed, built_at=built_at,
+            json_mode=json_mode, report=report,
         )
         return
 
@@ -323,6 +399,7 @@ def find(
         removed=removed,
         built_at=built_at,
         json_mode=json_mode,
+        report=report,
         reasons=bool(picks),
     )
 
@@ -350,6 +427,47 @@ def info() -> None:
     console.print(f"NVIDIA_API_KEY: {status}")
     if hint:
         console.print(hint)
+
+
+@app.command()
+def key(
+    set_new: Annotated[
+        bool, typer.Option("--set", help="Store a new key (interactive prompt).")
+    ] = False,
+    remove: Annotated[
+        bool, typer.Option("--remove", help="Delete the stored key.")
+    ] = False,
+) -> None:
+    """Show or manage the stored NVIDIA API key (the env var always wins)."""
+    if set_new and remove:
+        console.print("[red]Use either --set or --remove, not both.[/red]")
+        raise typer.Exit(code=1)
+    if remove:
+        jconfig.remove_key()
+        console.print("[green]Stored key removed.[/green]")
+        return
+    if set_new:
+        value = typer.prompt(
+            "NVIDIA_API_KEY", hide_input=True, default="", show_default=False
+        ).strip()
+        if not value:
+            console.print("[yellow]No key entered; nothing changed.[/yellow]")
+            raise typer.Exit(code=1)
+        jconfig.set_key(value)
+        console.print("[green]Key saved.[/green]")
+        return
+    current = jconfig.get_key()
+    if current:
+        masked = current[:9] + "…" + current[-4:]
+        source = "env" if os.environ.get("NVIDIA_API_KEY") else "config"
+        console.print(f"NVIDIA_API_KEY: set ({source}) — {masked}")
+        console.print("  Change: jfinder key --set   |   Delete: jfinder key --remove")
+    else:
+        console.print("NVIDIA_API_KEY: not set")
+        console.print("  Get a free key: https://build.nvidia.com  →  Get API Key")
+        console.print(
+            "  Store it: jfinder key --set   (or: export NVIDIA_API_KEY=nvapi-...)"
+        )
 
 
 if __name__ == "__main__":

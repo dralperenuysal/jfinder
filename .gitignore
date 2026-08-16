@@ -21,3 +21,6 @@ graphify-out/
 # Local dev files — not part of the repository
 .idea/
 AGENTS.md
+
+# Local logs
+*.log

@@ -41,6 +41,7 @@ COST_GROUPS: dict[str, set[str]] = {
     "all": set(COST_CLASSES),
     "free-to-publish": {"diamond", "subscription"},
     "free-to-read": {"oa_paid", "diamond", "oa_unknown"},
+    "diamond": {"diamond"},
 }
 
 QUARTILES: frozenset[str] = frozenset({"Q1", "Q2", "Q3", "Q4"})
