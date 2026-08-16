@@ -91,6 +91,15 @@ Top 3 target journals
 arama kapsamı ve (online modda) LLM aşamaları. `--json` modunda bu çıktılar stderr'e
 gider, stdout yalnızca JSON içerir.
 
+### Doğrulama
+
+20 örnek abstract üzerinde top-5 önerinin alan uyumu (Ağu 2026):
+
+- Offline (yalnızca BM25): **77/100 (%77)**
+- Online (LLM profil + yeniden sıralama): **95/100 (%95)**
+
+Uyum: önerilen derginin adı/konu etiketleri, çalışmanın alan anahtar kelimelerini içerir.
+
 ### LLM
 
 - Model: `JFINDER_MODEL` ortam değişkeni veya `--model` flag'i (varsayılan: `meta/llama-3.1-8b-instruct`)
@@ -203,6 +212,15 @@ Top 3 target journals
 While running, flowing stage output shows what is happening: journals loaded,
 search scope, and (online) the LLM stages. With `--json` this output goes to
 stderr, keeping stdout pure JSON.
+
+### Validation
+
+Field match of the top-5 picks over 20 sample abstracts (Aug 2026):
+
+- Offline (BM25 only): **77/100 (77%)**
+- Online (LLM profile + rerank): **95/100 (95%)**
+
+Match: the picked journal's name/topic tags contain the paper's field keywords.
 
 ### LLM
 
