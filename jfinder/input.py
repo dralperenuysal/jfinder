@@ -114,7 +114,12 @@ def validate(text: str) -> list[str]:
 
 
 def parse_sections(text: str) -> dict[str, object]:
-    """Split the template into title, abstract, keywords, study_type and notes."""
+    """Split the template into title, abstract, keywords, study_type and notes.
+
+    Content before the first recognized heading is ignored (the template has
+    none); if the text has no headings at all, it is treated as a plain
+    abstract so unheadered .txt files still work offline.
+    """
     sections: dict[str, list[str]] = {}
     current = ""
     for line in text.splitlines():
@@ -125,6 +130,14 @@ def parse_sections(text: str) -> dict[str, object]:
         else:
             if current:
                 sections.setdefault(current, []).append(line.strip())
+    if not sections:
+        return {
+            "title": "",
+            "abstract": text.strip(),
+            "keywords": [],
+            "study_type": "",
+            "notes": None,
+        }
     keywords_raw = ",".join(sections.get("Keywords", []))
     return {
         "title": "\n".join(sections.get("Title", [])).strip(),

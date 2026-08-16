@@ -106,6 +106,15 @@ def test_parse_sections() -> None:
     assert sections["notes"]
 
 
+def test_parse_sections_plain_text_without_headings() -> None:
+    text = "This is a plain abstract with no markdown headings at all. " * 5
+    sections = jinput.parse_sections(text)
+    assert str(sections["abstract"]) == text.strip()
+    assert sections["title"] == ""
+    assert sections["keywords"] == []
+    assert sections["notes"] is None
+
+
 def test_init_creates_template(tmp_path: Path) -> None:
     result = runner.invoke(app, ["init", str(tmp_path)])
     assert result.exit_code == 0

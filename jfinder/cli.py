@@ -147,6 +147,26 @@ def _finalize(short: pd.DataFrame, picks: list[dict[str, Any]], top_k: int) -> p
     return pd.DataFrame(rows)
 
 
+def _render(
+    results: pd.DataFrame,
+    top_k: int,
+    *,
+    removed: int,
+    built_at: str,
+    json_mode: bool,
+    reasons: bool = False,
+) -> None:
+    """Dispatch to JSON (stdout) or rich table — the single output decision point."""
+    if json_mode:
+        sys.stdout.write(
+            jrender.to_json(results, top_k, removed=removed, built_at=built_at) + "\n"
+        )
+    else:
+        jrender.print_results(
+            results, top_k, removed=removed, built_at=built_at, reasons=reasons
+        )
+
+
 @app.command()
 def find(
     path: Annotated[
@@ -226,17 +246,9 @@ def find(
 
     if offline:
         short = jretrieve.shortlist(filtered, _offline_profile(sections), n=40)
-        if json_mode:
-            sys.stdout.write(
-                jrender.to_json(
-                    _with_fit(short), top_k, removed=removed, built_at=built_at
-                )
-                + "\n"
-            )
-        else:
-            jrender.print_results(
-                _with_fit(short), top_k, removed=removed, built_at=built_at
-            )
+        _render(
+            _with_fit(short), top_k, removed=removed, built_at=built_at, json_mode=json_mode
+        )
         return
 
     # Online: LLM profile -> BM25 shortlist -> LLM rerank (AGENTS.md §7).
@@ -293,17 +305,9 @@ def find(
             f"[yellow]LLM failed — falling back to offline ranking ({exc})[/yellow]"
         )
         short = jretrieve.shortlist(filtered, _offline_profile(sections), n=40)
-        if json_mode:
-            sys.stdout.write(
-                jrender.to_json(
-                    _with_fit(short), top_k, removed=removed, built_at=built_at
-                )
-                + "\n"
-            )
-        else:
-            jrender.print_results(
-                _with_fit(short), top_k, removed=removed, built_at=built_at
-            )
+        _render(
+            _with_fit(short), top_k, removed=removed, built_at=built_at, json_mode=json_mode
+        )
         return
 
     picks = jllm.sanitize_picks(reranked, len(short))
@@ -313,14 +317,14 @@ def find(
             "filled from BM25 order.[/dim]"
         )
     final = _finalize(short, picks, top_k)
-    if json_mode:
-        sys.stdout.write(
-            jrender.to_json(final, top_k, removed=removed, built_at=built_at) + "\n"
-        )
-    else:
-        jrender.print_results(
-            final, top_k, removed=removed, built_at=built_at, reasons=bool(picks)
-        )
+    _render(
+        final,
+        top_k,
+        removed=removed,
+        built_at=built_at,
+        json_mode=json_mode,
+        reasons=bool(picks),
+    )
 
 
 @app.command()
