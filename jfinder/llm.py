@@ -17,8 +17,9 @@ from openai import OpenAI
 from jfinder import config as jconfig
 
 #: Default NIM model id; overridable via JFINDER_MODEL or --model (AGENTS.md §7).
-#: The NIM catalog changes often; deepseek-v3.1 was retired, v4-flash is its successor.
-DEFAULT_MODEL = "deepseek-ai/deepseek-v4-flash-0731"
+#: The NIM catalog changes often; llama-3.1-8b-instruct measured fastest and
+#: returned valid JSON in a sweep of the catalog (Aug 2026).
+DEFAULT_MODEL = "meta/llama-3.1-8b-instruct"
 BASE_URL = "https://integrate.api.nvidia.com/v1"
 TIMEOUT = 60
 

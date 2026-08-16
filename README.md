@@ -93,7 +93,7 @@ gider, stdout yalnızca JSON içerir.
 
 ### LLM
 
-- Model: `JFINDER_MODEL` ortam değişkeni veya `--model` flag'i (varsayılan: `deepseek-ai/deepseek-v4-flash-0731`)
+- Model: `JFINDER_MODEL` ortam değişkeni veya `--model` flag'i (varsayılan: `meta/llama-3.1-8b-instruct`)
 - API key (ücretsiz: https://build.nvidia.com):
   - İlk `jfinder find` çalıştırmasında key yoksa araç yapıştırmanızı ister ve `~/.config/jfinder/config.json` dosyasına kaydeder (0600 izinli); boş geçip offline devam edebilirsiniz
   - `NVIDIA_API_KEY` ortam değişkeni her zaman config dosyasından önceliklidir
@@ -206,7 +206,7 @@ stderr, keeping stdout pure JSON.
 
 ### LLM
 
-- Model: `JFINDER_MODEL` env var or `--model` flag (default: `deepseek-ai/deepseek-v4-flash-0731`)
+- Model: `JFINDER_MODEL` env var or `--model` flag (default: `meta/llama-3.1-8b-instruct`)
 - API key (free: https://build.nvidia.com):
   - On the first `jfinder find` without a key, the tool asks you to paste one and stores it in `~/.config/jfinder/config.json` (0600); press Enter to continue offline
   - The `NVIDIA_API_KEY` env var always takes precedence over the stored key
