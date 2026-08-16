@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
 import pytest
 from typer.testing import CliRunner
 
+from jfinder import cache as jcache
 from jfinder import data as jdata
 from jfinder import llm as jllm
 from jfinder.cli import app
@@ -21,6 +23,12 @@ GOOD_TEXT = (FIXTURES / "abstract_good.md").read_text(encoding="utf-8")
 def fixture_index(monkeypatch: pytest.MonkeyPatch) -> None:
     """Point the CLI at the 200-row test fixture instead of the real index."""
     monkeypatch.setattr(jdata, "INDEX_PATH", FIXTURES / "journals_mini.parquet")
+
+
+@pytest.fixture()
+def isolated_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Point the cache at a per-test directory so runs never pollute each other."""
+    monkeypatch.setattr(jcache, "cache_dir", lambda: tmp_path)
 
 
 @pytest.fixture()
@@ -145,7 +153,9 @@ PROFILE = {
 }
 
 
-def test_find_online_shows_llm_reasons(fixture_index: None, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_find_online_shows_llm_reasons(
+    fixture_index: None, isolated_cache: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
     monkeypatch.setattr(jllm, "profile", lambda text, model=None: PROFILE)
 
@@ -160,7 +170,9 @@ def test_find_online_shows_llm_reasons(fixture_index: None, monkeypatch: pytest.
     assert "low" in result.stdout
 
 
-def test_find_online_missing_key_is_fatal(fixture_index: None, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_find_online_missing_key_is_fatal(
+    fixture_index: None, isolated_cache: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     result = runner.invoke(app, ["find", "-t", GOOD_TEXT])
     assert result.exit_code != 0
@@ -169,7 +181,7 @@ def test_find_online_missing_key_is_fatal(fixture_index: None, monkeypatch: pyte
 
 
 def test_find_online_llm_failure_falls_back_to_offline(
-    fixture_index: None, monkeypatch: pytest.MonkeyPatch
+    fixture_index: None, isolated_cache: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
 
@@ -184,7 +196,7 @@ def test_find_online_llm_failure_falls_back_to_offline(
 
 
 def test_find_online_invalid_picks_filled_from_bm25(
-    fixture_index: None, monkeypatch: pytest.MonkeyPatch
+    fixture_index: None, isolated_cache: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
     monkeypatch.setattr(jllm, "profile", lambda text, model=None: PROFILE)
@@ -197,3 +209,94 @@ def test_find_online_invalid_picks_filled_from_bm25(
     assert result.exit_code == 0
     assert "Top 5 target journals" in result.stdout
     assert "filled from BM25 order" in result.stdout
+
+
+# --- JSON mode and cache (AGENTS.md §10, §11) ---
+
+
+def test_find_json_valid_on_stdout(fixture_index: None, no_http: None) -> None:
+    result = runner.invoke(app, ["find", "-t", GOOD_TEXT, "--offline", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["built_at"] == "2026-08-01"
+    assert payload["removed_flagged"] > 0
+    assert isinstance(payload["stale"], bool)
+    journals = payload["journals"]
+    assert 1 <= len(journals) <= 5
+    first = journals[0]
+    assert first["rank"] == 1
+    assert isinstance(first["fit"], int)
+    assert "name" in first and "quartile" in first and "cost_label" in first
+    # rich table output must not pollute stdout
+    assert "Top 5 target journals" not in result.stdout
+    assert "─" not in result.stdout
+
+
+def test_find_json_online_with_reasons(
+    fixture_index: None, isolated_cache: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
+    monkeypatch.setattr(jllm, "profile", lambda text, model=None: PROFILE)
+    monkeypatch.setattr(
+        jllm,
+        "rerank",
+        lambda profile, candidates, notes, k, model=None: {
+            "picks": [{"i": 0, "fit": 91, "why": "topical", "risk": "low"}]
+        },
+    )
+    result = runner.invoke(app, ["find", "-t", GOOD_TEXT, "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["journals"][0]["why"] == "topical"
+    assert payload["journals"][0]["risk"] == "low"
+
+
+def test_cache_avoids_repeat_llm_calls(
+    fixture_index: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
+    monkeypatch.setattr(jcache, "cache_dir", lambda: tmp_path)
+    calls = {"profile": 0, "rerank": 0}
+
+    def counting_profile(text: str, model: str | None = None) -> dict:
+        calls["profile"] += 1
+        return PROFILE
+
+    def counting_rerank(profile: dict, candidates: list, notes: str | None, k: int, model: str | None = None) -> dict:
+        calls["rerank"] += 1
+        return {"picks": [{"i": 0, "fit": 90, "why": "w", "risk": "r"}]}
+
+    monkeypatch.setattr(jllm, "profile", counting_profile)
+    monkeypatch.setattr(jllm, "rerank", counting_rerank)
+    runner.invoke(app, ["find", "-t", GOOD_TEXT])
+    runner.invoke(app, ["find", "-t", GOOD_TEXT])
+    assert calls["profile"] == 1
+    assert calls["rerank"] == 1
+    # a filter change reruns the rerank but not the profile
+    runner.invoke(app, ["find", "-t", GOOD_TEXT, "--cost", "free-to-read"])
+    assert calls["profile"] == 1
+    assert calls["rerank"] == 2
+
+
+def test_no_cache_forces_llm_calls(
+    fixture_index: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
+    monkeypatch.setattr(jcache, "cache_dir", lambda: tmp_path)
+    calls = {"profile": 0}
+
+    def counting_profile(text: str, model: str | None = None) -> dict:
+        calls["profile"] += 1
+        return PROFILE
+
+    monkeypatch.setattr(jllm, "profile", counting_profile)
+    monkeypatch.setattr(
+        jllm,
+        "rerank",
+        lambda profile, candidates, notes, k, model=None: {
+            "picks": [{"i": 0, "fit": 90, "why": "w", "risk": "r"}]
+        },
+    )
+    runner.invoke(app, ["find", "-t", GOOD_TEXT])
+    runner.invoke(app, ["find", "-t", GOOD_TEXT, "--no-cache"])
+    assert calls["profile"] == 2

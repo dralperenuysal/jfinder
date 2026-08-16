@@ -7,6 +7,7 @@ keep rich output on stderr.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -15,6 +16,7 @@ import typer
 from rich.console import Console
 
 from jfinder import __version__
+from jfinder import cache as jcache
 from jfinder import data as jdata
 from jfinder import input as jinput
 from jfinder import llm as jllm
@@ -180,24 +182,31 @@ def find(
     verbose: Annotated[
         bool, typer.Option("--verbose", help="Log details, e.g. corrected LLM picks.")
     ] = False,
+    json_mode: Annotated[
+        bool, typer.Option("--json", help="JSON on stdout; rich output on stderr.")
+    ] = False,
+    no_cache: Annotated[
+        bool, typer.Option("--no-cache", help="Skip the result cache.")
+    ] = False,
 ) -> None:
     """Suggest up to 5 target journals for the abstract."""
+    out_console = Console(stderr=True) if json_mode else console
     try:
         abstract_text = jinput.get_text(path, file, text)
     except InputError as exc:
-        console.print(f"[red]{exc}[/red]")
+        out_console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from None
 
     try:
         warnings = jinput.validate(abstract_text)
     except InputError as exc:
-        console.print(f"[red]{exc}[/red]")
+        out_console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from None
     for warning in warnings:
-        console.print(f"[yellow]{warning}[/yellow]")
+        out_console.print(f"[yellow]{warning}[/yellow]")
 
     if top_k < 1:
-        console.print("[red]-k must be at least 1.[/red]")
+        out_console.print("[red]-k must be at least 1.[/red]")
         raise typer.Exit(code=1)
 
     quartiles = {q.strip() for q in quartile.split(",")} if quartile else None
@@ -208,7 +217,7 @@ def find(
             index, cost=cost, max_apc=max_apc, quartiles=quartiles, show_flagged=show_flagged
         )
     except (JfinderError, ValueError) as exc:
-        console.print(f"[red]{exc}[/red]")
+        out_console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from None
 
     sections = jinput.parse_sections(abstract_text)
@@ -217,14 +226,42 @@ def find(
 
     if offline:
         short = jretrieve.shortlist(filtered, _offline_profile(sections), n=40)
-        jrender.print_results(
-            _with_fit(short), top_k, removed=removed, built_at=built_at
-        )
+        if json_mode:
+            sys.stdout.write(
+                jrender.to_json(
+                    _with_fit(short), top_k, removed=removed, built_at=built_at
+                )
+                + "\n"
+            )
+        else:
+            jrender.print_results(
+                _with_fit(short), top_k, removed=removed, built_at=built_at
+            )
         return
 
     # Online: LLM profile -> BM25 shortlist -> LLM rerank (AGENTS.md §7).
+    model_name = model or jllm.model_id()
+    profile_cache_key = jcache.profile_key(abstract_text, model_name)
+    rerank_cache_key = jcache.rerank_key(
+        abstract_text,
+        model_name,
+        cost,
+        max_apc,
+        show_flagged,
+        top_k,
+        sorted(quartiles) if quartiles else None,
+    )
     try:
-        llm_profile = jllm.profile(abstract_text, model=model)
+        llm_profile: dict[str, Any] | None = None
+        if not no_cache:
+            llm_profile = jcache.get("profiles", profile_cache_key)
+            if llm_profile is not None and verbose:
+                out_console.print("[dim]profile loaded from cache[/dim]")
+        if llm_profile is None:
+            llm_profile = jllm.profile(abstract_text, model=model)
+            if not no_cache:
+                jcache.put("profiles", profile_cache_key, llm_profile)
+
         short = jretrieve.shortlist(filtered, llm_profile, n=40)
         short = _with_fit(short)
         candidates = [
@@ -238,30 +275,52 @@ def find(
             for position, (_, row) in enumerate(short.iterrows())
         ]
         notes = str(sections["notes"] or "")
-        reranked = jllm.rerank(llm_profile, candidates, notes, top_k, model=model)
+
+        reranked: dict[str, Any] | None = None
+        if not no_cache:
+            reranked = jcache.get("reranks", rerank_cache_key)
+            if reranked is not None and verbose:
+                out_console.print("[dim]rerank loaded from cache[/dim]")
+        if reranked is None:
+            reranked = jllm.rerank(llm_profile, candidates, notes, top_k, model=model)
+            if not no_cache:
+                jcache.put("reranks", rerank_cache_key, reranked)
     except LLMError as exc:
         if exc.fatal:
-            console.print(f"[red]{exc}[/red]")
+            out_console.print(f"[red]{exc}[/red]")
             raise typer.Exit(code=1) from None
-        console.print(
+        out_console.print(
             f"[yellow]LLM failed — falling back to offline ranking ({exc})[/yellow]"
         )
         short = jretrieve.shortlist(filtered, _offline_profile(sections), n=40)
-        jrender.print_results(
-            _with_fit(short), top_k, removed=removed, built_at=built_at
-        )
+        if json_mode:
+            sys.stdout.write(
+                jrender.to_json(
+                    _with_fit(short), top_k, removed=removed, built_at=built_at
+                )
+                + "\n"
+            )
+        else:
+            jrender.print_results(
+                _with_fit(short), top_k, removed=removed, built_at=built_at
+            )
         return
 
     picks = jllm.sanitize_picks(reranked, len(short))
     if verbose and len(picks) < top_k:
-        console.print(
+        out_console.print(
             f"[dim]LLM returned {top_k - len(picks)} invalid or duplicate pick(s); "
             "filled from BM25 order.[/dim]"
         )
     final = _finalize(short, picks, top_k)
-    jrender.print_results(
-        final, top_k, removed=removed, built_at=built_at, reasons=bool(picks)
-    )
+    if json_mode:
+        sys.stdout.write(
+            jrender.to_json(final, top_k, removed=removed, built_at=built_at) + "\n"
+        )
+    else:
+        jrender.print_results(
+            final, top_k, removed=removed, built_at=built_at, reasons=bool(picks)
+        )
 
 
 @app.command()

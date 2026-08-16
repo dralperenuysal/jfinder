@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -71,6 +72,40 @@ def is_stale(built_at: str | None, today: datetime | None = None) -> bool:
         return True
     reference = today or datetime.now(timezone.utc)
     return reference - built > timedelta(days=STALE_AFTER_DAYS)
+
+
+def to_json(
+    results: pd.DataFrame,
+    top_k: int,
+    *,
+    removed: int = 0,
+    built_at: str | None = None,
+) -> str:
+    """Same data as the table, as JSON for stdout (--json, AGENTS.md §10)."""
+    journals: list[dict[str, object]] = []
+    for position, (_, row) in enumerate(results.head(top_k).iterrows(), start=1):
+        why = str(row.get("_why", "")).strip()
+        risk = str(row.get("_risk", "")).strip()
+        journals.append(
+            {
+                "rank": position,
+                "name": str(row["name"]),
+                "quartile": str(row["quartile"]),
+                "fit": int(row["fit"]),
+                "cost": str(row["cost"]),
+                "cost_label": cost_label(row),
+                "flags": flags_for(row),
+                "why": why or None,
+                "risk": risk or None,
+            }
+        )
+    payload: dict[str, object] = {
+        "journals": journals,
+        "removed_flagged": removed,
+        "built_at": built_at,
+        "stale": is_stale(built_at),
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 def print_results(
