@@ -301,9 +301,11 @@ def test_find_json_valid_on_stdout(fixture_index: None, no_http: None) -> None:
     assert first["rank"] == 1
     assert isinstance(first["fit"], int)
     assert "name" in first and "quartile" in first and "cost_label" in first
-    # rich table output must not pollute stdout
+    # rich table output and progress stages must not pollute stdout
     assert "Top 5 target journals" not in result.stdout
     assert "─" not in result.stdout
+    assert "Loading journal index" not in result.stdout
+    assert "Loading journal index" in result.stderr
 
 
 def test_find_json_online_with_reasons(
@@ -323,6 +325,7 @@ def test_find_json_online_with_reasons(
     payload = json.loads(result.stdout)
     assert payload["journals"][0]["why"] == "topical"
     assert payload["journals"][0]["risk"] == "low"
+    assert "Extracting profile via LLM" in result.stderr
 
 
 # --- plain-text report mode (--report) ---
@@ -366,6 +369,48 @@ def test_find_json_wins_over_report(fixture_index: None, no_http: None) -> None:
     payload = json.loads(result.stdout)
     assert 1 <= len(payload["journals"]) <= 5
     assert "Top 5 target journals" not in result.stdout
+
+
+# --- progress stages and --quiet ---
+
+
+def test_find_offline_shows_progress(fixture_index: None, no_http: None) -> None:
+    result = runner.invoke(app, ["find", "-t", GOOD_TEXT, "--offline"])
+    assert result.exit_code == 0
+    assert "Loading journal index" in result.stdout
+    assert "journals loaded (built" in result.stdout
+    assert "Searching" in result.stdout
+    assert "Top 5 target journals" in result.stdout
+
+
+def test_find_quiet_suppresses_progress(fixture_index: None, no_http: None) -> None:
+    result = runner.invoke(app, ["find", "-t", GOOD_TEXT, "--offline", "--quiet"])
+    assert result.exit_code == 0
+    assert "Loading journal index" not in result.stdout
+    assert "journals loaded" not in result.stdout
+    assert "Searching" not in result.stdout
+    assert "Top 5 target journals" in result.stdout
+
+
+def test_find_online_shows_llm_stages(
+    fixture_index: None, isolated_cache: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
+    monkeypatch.setattr(jllm, "profile", lambda text, model=None: PROFILE)
+    monkeypatch.setattr(
+        jllm,
+        "rerank",
+        lambda profile, candidates, notes, k, model=None: {
+            "picks": [{"i": 0, "fit": 91, "why": "topical", "risk": "low"}]
+        },
+    )
+    result = runner.invoke(app, ["find", "-t", GOOD_TEXT])
+    assert result.exit_code == 0
+    assert "Extracting profile via LLM" in result.stdout
+    assert "Searching" in result.stdout
+    assert "Reranking" in result.stdout
+    assert "candidates via LLM" in result.stdout
+    assert "Top 5 target journals" in result.stdout
 
 
 def test_cache_avoids_repeat_llm_calls(

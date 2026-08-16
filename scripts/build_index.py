@@ -22,6 +22,15 @@ from pathlib import Path
 
 import pandas as pd
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskID,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -71,20 +80,33 @@ def fetch_sources(mailto: str) -> list[dict]:
         "cursor": "*",
     }
     rows: list[dict] = []
-    pages = 0
-    while True:
-        data = get_json(API, params)
-        rows.extend(data.get("results", []))
-        pages += 1
-        if pages == 1:
-            console.print(f"Total journals to fetch: {data['meta']['count']:,}")
-        if pages % 25 == 0:
-            console.print(f"  {len(rows):,} fetched ({pages} pages)")
-        cursor = data["meta"].get("next_cursor")
-        if not cursor:
-            break
-        params["cursor"] = cursor
-        time.sleep(POLITE_DELAY)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TextColumn("· {task.fields[journals]} journals"),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        page_task: TaskID | None = None
+        while True:
+            data = get_json(API, params)
+            rows.extend(data.get("results", []))
+            if page_task is None:
+                total_pages = -(-int(data["meta"]["count"]) // PER_PAGE)
+                page_task = progress.add_task(
+                    f"Fetching {data['meta']['count']:,} journals from OpenAlex",
+                    total=total_pages,
+                    journals="0",
+                )
+            progress.update(page_task, advance=1, journals=f"{len(rows):,}")
+            cursor = data["meta"].get("next_cursor")
+            if not cursor:
+                progress.update(page_task, completed=total_pages)
+                break
+            params["cursor"] = cursor
+            time.sleep(POLITE_DELAY)
     return rows
 
 

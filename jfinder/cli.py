@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import os
 import sys
+import time
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -45,6 +47,25 @@ def _key_status() -> tuple[str, str]:
         "  Get a free key: https://build.nvidia.com  →  Get API Key\n"
         + "  Store it: jfinder key --set   (or: export NVIDIA_API_KEY=nvapi-...)",
     )
+
+
+def _stage(
+    msg: str, *, out: Console, quiet: bool
+) -> AbstractContextManager[None]:
+    """A progress stage: animated spinner on a terminal, one printed line otherwise.
+
+    `quiet` turns stages off entirely; the final result still renders.
+    """
+    if quiet:
+        return nullcontext()
+    if out.is_terminal:
+        return out.status(f"[cyan]{msg}[/cyan]", spinner="dots")
+    out.print(f"[cyan]{msg}[/cyan]")
+    return nullcontext()
+
+
+def _verbose_time(out: Console, label: str, seconds: float) -> None:
+    out.print(f"[dim]{label}: {seconds:.1f}s[/dim]")
 
 
 def _stdin_interactive() -> bool:
@@ -217,9 +238,13 @@ def _render_offline(
     built_at: str,
     json_mode: bool,
     report: bool = False,
+    quiet: bool = False,
+    out: Console | None = None,
 ) -> None:
     """BM25 over the abstract's own words, then render (offline ranking)."""
-    short = jretrieve.shortlist(filtered, _offline_profile(sections), n=40)
+    target = out if out is not None else (Console(stderr=True) if json_mode else console)
+    with _stage(f"Searching {len(filtered):,} journals…", out=target, quiet=quiet):
+        short = jretrieve.shortlist(filtered, _offline_profile(sections), n=40)
     _render(
         _with_fit(short),
         top_k,
@@ -265,6 +290,9 @@ def find(
     verbose: Annotated[
         bool, typer.Option("--verbose", help="Log details, e.g. corrected LLM picks.")
     ] = False,
+    quiet: Annotated[
+        bool, typer.Option("--quiet", "-q", help="Suppress progress output.")
+    ] = False,
     json_mode: Annotated[
         bool, typer.Option("--json", help="JSON on stdout; rich output on stderr.")
     ] = False,
@@ -297,7 +325,16 @@ def find(
 
     quartiles = {q.strip() for q in quartile.split(",")} if quartile else None
     try:
-        index = jdata.load_index()
+        with _stage("Loading journal index…", out=out_console, quiet=quiet):
+            load_start = time.perf_counter()
+            index = jdata.load_index()
+            load_seconds = time.perf_counter() - load_start
+        if not quiet:
+            out_console.print(
+                f"{len(index):,} journals loaded (built {index['built_at'].iloc[0]})"
+            )
+        if verbose:
+            _verbose_time(out_console, "load", load_seconds)
         flagged_total = int((index["flag"] == "unverified").sum())
         filtered = jdata.apply_filters(
             index, cost=cost, max_apc=max_apc, quartiles=quartiles, show_flagged=show_flagged
@@ -313,7 +350,7 @@ def find(
     if offline:
         _render_offline(
             filtered, sections, top_k, removed=removed, built_at=built_at,
-            json_mode=json_mode, report=report,
+            json_mode=json_mode, report=report, quiet=quiet, out=out_console,
         )
         return
 
@@ -323,7 +360,7 @@ def find(
         )
         _render_offline(
             filtered, sections, top_k, removed=removed, built_at=built_at,
-            json_mode=json_mode, report=report,
+            json_mode=json_mode, report=report, quiet=quiet, out=out_console,
         )
         return
 
@@ -346,12 +383,28 @@ def find(
             if llm_profile is not None and verbose:
                 out_console.print("[dim]profile loaded from cache[/dim]")
         if llm_profile is None:
-            llm_profile = jllm.profile(abstract_text, model=model)
+            with _stage("Extracting profile via LLM…", out=out_console, quiet=quiet):
+                profile_start = time.perf_counter()
+                llm_profile = jllm.profile(abstract_text, model=model)
+                profile_seconds = time.perf_counter() - profile_start
             if not no_cache:
                 jcache.put("profiles", profile_cache_key, llm_profile)
+            if verbose:
+                _verbose_time(out_console, "profile", profile_seconds)
+                out_console.print(
+                    "[dim]"
+                    + " · ".join(
+                        str(llm_profile.get(k, ""))
+                        for k in ("field", "study_type", "novelty_1_5")
+                    )
+                    + "[/dim]"
+                )
 
-        short = jretrieve.shortlist(filtered, llm_profile, n=40)
-        short = _with_fit(short)
+        with _stage(
+            f"Searching {len(filtered):,} journals…", out=out_console, quiet=quiet
+        ):
+            short = jretrieve.shortlist(filtered, llm_profile, n=40)
+            short = _with_fit(short)
         candidates = [
             {
                 "i": int(position),
@@ -370,7 +423,16 @@ def find(
             if reranked is not None and verbose:
                 out_console.print("[dim]rerank loaded from cache[/dim]")
         if reranked is None:
-            reranked = jllm.rerank(llm_profile, candidates, notes, top_k, model=model)
+            with _stage(
+                f"Reranking {len(short):,} candidates via LLM…",
+                out=out_console,
+                quiet=quiet,
+            ):
+                rerank_start = time.perf_counter()
+                reranked = jllm.rerank(llm_profile, candidates, notes, top_k, model=model)
+                rerank_seconds = time.perf_counter() - rerank_start
+            if verbose:
+                _verbose_time(out_console, "rerank", rerank_seconds)
             if not no_cache:
                 jcache.put("reranks", rerank_cache_key, reranked)
     except LLMError as exc:
@@ -382,7 +444,7 @@ def find(
         )
         _render_offline(
             filtered, sections, top_k, removed=removed, built_at=built_at,
-            json_mode=json_mode, report=report,
+            json_mode=json_mode, report=report, quiet=quiet, out=out_console,
         )
         return
 

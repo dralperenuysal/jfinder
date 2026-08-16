@@ -67,6 +67,11 @@ Top 3 target journals
 - `--show-flagged` — varsayılan olarak gizlenen "unverified" dergileri göster
 - `-k N` — gösterilecek dergi sayısı (varsayılan 5)
 - `--report` — tablo yerine düz metin liste; dergi adları kırpılmadan tam gösterilir
+- `--quiet`, `-q` — ilerleme çıktılarını kapatır (yalnızca sonuç gösterilir)
+
+Çalışma sırasında ekranda akan aşama çıktıları görünür: yüklenen dergi sayısı,
+arama kapsamı ve (online modda) LLM aşamaları. `--json` modunda bu çıktılar stderr'e
+gider, stdout yalnızca JSON içerir.
 
 ### LLM
 
@@ -134,6 +139,11 @@ jfinder info                 # index date, journal count, model, key status
 - `--show-flagged` — include journals flagged as unverified (hidden by default)
 - `-k N` — number of journals to show (default 5)
 - `--report` — plain-text list instead of the table; journal names are never truncated
+- `--quiet`, `-q` — suppress progress output (results only)
+
+While running, flowing stage output shows what is happening: journals loaded,
+search scope, and (online) the LLM stages. With `--json` this output goes to
+stderr, keeping stdout pure JSON.
 
 ### LLM
 
