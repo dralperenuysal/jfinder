@@ -24,3 +24,6 @@ AGENTS.md
 
 # Local logs
 *.log
+
+# Manual test scenarios (local only)
+mock/

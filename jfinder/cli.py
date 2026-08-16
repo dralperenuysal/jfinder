@@ -245,7 +245,7 @@ def find(
         int, typer.Option("-k", "--k", help="Number of journals to show.")
     ] = 5,
     cost: Annotated[
-        str, typer.Option("--cost", help="all | free-to-publish | free-to-read.")
+        str, typer.Option("--cost", help="all | free-to-publish | free-to-read | diamond.")
     ] = "all",
     max_apc: Annotated[
         float | None, typer.Option("--max-apc", help="Maximum APC in USD.")

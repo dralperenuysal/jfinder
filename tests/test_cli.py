@@ -325,6 +325,49 @@ def test_find_json_online_with_reasons(
     assert payload["journals"][0]["risk"] == "low"
 
 
+# --- plain-text report mode (--report) ---
+
+
+def test_find_report_offline_plain_text(fixture_index: None, no_http: None) -> None:
+    result = runner.invoke(app, ["find", "-t", GOOD_TEXT, "--offline", "--report"])
+    assert result.exit_code == 0
+    # numbered list with full journal names, not a rich table
+    assert "Top 5 target journals" in result.stdout
+    assert "\n1. " in result.stdout
+    assert "┏" not in result.stdout and "┃" not in result.stdout
+    assert "Fit" in result.stdout
+    assert "Always verify aims & scope" in result.stdout
+
+
+def test_find_report_online_shows_reasons(
+    fixture_index: None, isolated_cache: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
+    monkeypatch.setattr(jllm, "profile", lambda text, model=None: PROFILE)
+    monkeypatch.setattr(
+        jllm,
+        "rerank",
+        lambda profile, candidates, notes, k, model=None: {
+            "picks": [{"i": 0, "fit": 91, "why": "topical", "risk": "low"}]
+        },
+    )
+    result = runner.invoke(app, ["find", "-t", GOOD_TEXT, "--report"])
+    assert result.exit_code == 0
+    assert "\n1. " in result.stdout
+    assert "▸ topical" in result.stdout
+    assert "⚠ low" in result.stdout
+
+
+def test_find_json_wins_over_report(fixture_index: None, no_http: None) -> None:
+    result = runner.invoke(
+        app, ["find", "-t", GOOD_TEXT, "--offline", "--json", "--report"]
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert 1 <= len(payload["journals"]) <= 5
+    assert "Top 5 target journals" not in result.stdout
+
+
 def test_cache_avoids_repeat_llm_calls(
     fixture_index: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
