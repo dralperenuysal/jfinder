@@ -16,6 +16,24 @@ Aday listesi her zaman yerel `journals.parquet` dosyasından gelir — halüsina
 riski yoktur. LLM katmanı isteğe bağlı bir iyileştirmedir; araç `--offline` ile
 API key'siz de çalışır.
 
+### Akış
+
+```
+abstract.md
+   │
+   ▼
+[1] LLM: profil çıkarımı       (field, keywords, study type…)
+   │
+   ▼
+[2] BM25: yerel arama          (~120 bin dergiden → 40 aday)
+   │
+   ▼
+[3] LLM: yeniden sıralama      (fit skoru + gerekçe + risk)
+   │
+   ▼
+Top 5 dergi + gerekçeler
+```
+
 ### Kurulum
 
 ```bash
@@ -108,6 +126,24 @@ profile from the abstract and (b) reranks candidates found by local BM25
 search. Candidates always come from the bundled `journals.parquet`. The LLM
 layer is an optional refinement — the tool works with `--offline` and no API
 key.
+
+### Flow
+
+```
+abstract.md
+   │
+   ▼
+[1] LLM: profile extraction    (field, keywords, study type…)
+   │
+   ▼
+[2] BM25: local search         (~120k journals → 40 candidates)
+   │
+   ▼
+[3] LLM: reranking             (fit score + why + risk)
+   │
+   ▼
+Top 5 journals + reasons
+```
 
 ### Install
 
