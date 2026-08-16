@@ -14,8 +14,12 @@ import typer
 from rich.console import Console
 
 from jfinder import __version__
-from jfinder.data import DataError, index_meta
-from jfinder.input import ABSTRACT_TEMPLATE
+from jfinder import data as jdata
+from jfinder import input as jinput
+from jfinder import render as jrender
+from jfinder import retrieve as jretrieve
+from jfinder.data import DataError, JfinderError, index_meta
+from jfinder.input import ABSTRACT_TEMPLATE, InputError
 
 app = typer.Typer(
     name="jfinder",
@@ -85,6 +89,91 @@ def init(
     target.write_text(ABSTRACT_TEMPLATE, encoding="utf-8")
     console.print(f"[green]Created[/green] {target}")
     console.print("  Fill in the template, then run: jfinder find")
+
+
+@app.command()
+def find(
+    path: Annotated[
+        Path | None, typer.Argument(help="Directory containing abstract.md.")
+    ] = None,
+    file: Annotated[
+        Path | None, typer.Option("-f", "--file", help="Read the abstract from this file.")
+    ] = None,
+    text: Annotated[
+        str | None, typer.Option("-t", "--text", help="Use this abstract text directly.")
+    ] = None,
+    top_k: Annotated[
+        int, typer.Option("-k", "--k", help="Number of journals to show.")
+    ] = 5,
+    cost: Annotated[
+        str, typer.Option("--cost", help="all | free-to-publish | free-to-read.")
+    ] = "all",
+    max_apc: Annotated[
+        float | None, typer.Option("--max-apc", help="Maximum APC in USD.")
+    ] = None,
+    quartile: Annotated[
+        str | None, typer.Option("--quartile", help="Comma-separated quartiles, e.g. Q1,Q2.")
+    ] = None,
+    show_flagged: Annotated[
+        bool, typer.Option("--show-flagged", help="Include journals flagged as unverified.")
+    ] = False,
+    offline: Annotated[
+        bool, typer.Option("--offline", help="Skip the LLM: BM25 over the abstract's own words.")
+    ] = False,
+) -> None:
+    """Suggest up to 5 target journals for the abstract."""
+    try:
+        abstract_text = jinput.get_text(path, file, text)
+    except InputError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    try:
+        warnings = jinput.validate(abstract_text)
+    except InputError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from None
+    for warning in warnings:
+        console.print(f"[yellow]{warning}[/yellow]")
+
+    if top_k < 1:
+        console.print("[red]-k must be at least 1.[/red]")
+        raise typer.Exit(code=1)
+
+    quartiles = {q.strip() for q in quartile.split(",")} if quartile else None
+    try:
+        index = jdata.load_index()
+        flagged_total = int((index["flag"] == "unverified").sum())
+        filtered = jdata.apply_filters(
+            index, cost=cost, max_apc=max_apc, quartiles=quartiles, show_flagged=show_flagged
+        )
+    except (JfinderError, ValueError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if not offline:
+        console.print(
+            "[yellow]LLM mode lands in milestone 5 — running the offline search for now.[/yellow]"
+        )
+
+    sections = jinput.parse_sections(abstract_text)
+    keywords = sections["keywords"]
+    profile = {
+        "field": str(sections["title"]),
+        "subfields": [],
+        "keywords": [*keywords, *str(sections["abstract"]).split()],
+    }
+    short = jretrieve.shortlist(filtered, profile, n=40)
+    scores = short["_score"].astype(float)
+    top_score = float(scores.max()) if len(scores) else 0.0
+    short = short.copy()
+    short["fit"] = [
+        max(1, round(100 * score / top_score)) if top_score > 0 else 0 for score in scores
+    ]
+    removed = flagged_total - int((filtered["flag"] == "unverified").sum())
+    jrender.print_results(
+        short, top_k, removed=removed, built_at=str(filtered["built_at"].iloc[0])
+    )
 
 
 @app.command()

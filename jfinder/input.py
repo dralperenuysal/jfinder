@@ -83,6 +83,16 @@ def read_any(path: Path) -> str:
     raise InputError(f"Unsupported file type: {suffix or path.name}")
 
 
+def get_text(path: Path | None, file: Path | None, text: str | None) -> str:
+    """Resolve input priority: --text, then --file, then directory search (§6)."""
+    if text is not None:
+        return text.strip()
+    if file is not None:
+        return read_any(file)
+    directory = path or Path.cwd()
+    return read_any(locate(directory))
+
+
 def validate(text: str) -> list[str]:
     """Raise InputError for fatal problems; return non-fatal warnings (AGENTS.md §6)."""
     if _PLACEHOLDER_RE.search(text):

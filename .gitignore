@@ -12,3 +12,6 @@ build/
 # Legacy prototype artifacts — never enter the repo
 data/scimagojr.csv
 results*.csv
+
+# Agent runtime state
+.codewhale/
