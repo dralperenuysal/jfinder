@@ -15,3 +15,7 @@ results*.csv
 
 # Agent runtime state
 .codewhale/
+
+# Local dev files — not part of the repository
+.idea/
+AGENTS.md
