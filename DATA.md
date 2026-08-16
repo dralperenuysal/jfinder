@@ -51,6 +51,3 @@ country_code, topics, summary_stats, works_count, is_oa, is_in_doaj, apc_usd`.
 
 - APC prices are list prices (OpenAlex/DOAJ); verify actual prices on the
   journal's website.
-- **No SCImago-derived columns are present in this repository** (SJR, SJR
-  quartile, Scimago categories, cites-per-doc). SCImago data is
-  non-commercial-only and conflicts with the MIT license.

@@ -1,14 +1,14 @@
 # Title
-<çalışmanın başlığı>
+<your study title>
 
 # Abstract
-<200-300 kelime: amaç, yöntem, bulgular, sonuç>
+<200-300 words: purpose, methods, findings, conclusion>
 
 # Keywords
-<virgülle ayrılmış, 4-8 adet>
+<comma-separated, 4-8>
 
 # Study type
-<ör: methods paper / RCT / retrospective cohort / review / case report>
+<e.g. methods paper / RCT / retrospective cohort / review / case report>
 
-# Notes (opsiyonel)
-<hedef kitle, dil kısıtı, süre baskısı, kaçınmak istediğin yayıncılar>
+# Notes (optional)
+<target audience, language constraints, time pressure, publishers to avoid>

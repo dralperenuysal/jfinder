@@ -82,7 +82,6 @@ dizininde saklanır.
 
 - Kod: MIT (`LICENSE`)
 - Dergi verisi: OpenAlex (CC0) — ayrıntılar için `DATA.md`
-- SCImago kaynaklı hiçbir kolon repoda yer almaz
 
 **Not:** Bu araç bir öneri aracıdır, karar aracı değildir. Gönderim öncesinde
 derginin aims & scope'unu kendi sitesinden doğrulayın.
@@ -143,7 +142,6 @@ No telemetry; nothing else leaves the machine; results live in the local cache.
 
 - Code: MIT (`LICENSE`)
 - Journal data: OpenAlex (CC0) — see `DATA.md`
-- No SCImago-derived columns are present in this repository
 
 **Note:** this is a suggestion tool, not a decision tool — always verify aims &
 scope on the journal site before submitting.
