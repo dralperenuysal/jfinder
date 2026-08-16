@@ -5,6 +5,8 @@ A CLI that suggests target journals for your paper abstract, grounded in local O
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Data: OpenAlex CC0](https://img.shields.io/badge/data-OpenAlex%20CC0-green.svg)](DATA.md)
 
+![jfinder demo](jfinder-demo.gif)
+
 <details>
 <summary>🇹🇷 Türkçe</summary>
 
