@@ -9,6 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from jfinder import data as jdata
+from jfinder import llm as jllm
 from jfinder.cli import app
 
 runner = CliRunner()
@@ -129,3 +130,70 @@ def test_find_stale_index_warns(no_http: None, monkeypatch: pytest.MonkeyPatch, 
     result = runner.invoke(app, ["find", "-t", GOOD_TEXT, "--offline"])
     assert result.exit_code == 0
     assert "more than 12 months ago" in result.stdout
+
+
+# --- online (LLM) path, mocked: no network, no real API key (AGENTS.md §14) ---
+
+PROFILE = {
+    "field": "Medicine",
+    "subfields": ["Intensive Care"],
+    "study_type": "retrospective cohort",
+    "keywords": ["sepsis", "icu"],
+    "audience": "clinicians",
+    "novelty_1_5": 3,
+    "summary": "a sepsis model",
+}
+
+
+def test_find_online_shows_llm_reasons(fixture_index: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
+    monkeypatch.setattr(jllm, "profile", lambda text, model=None: PROFILE)
+
+    def fake_rerank(profile: dict, candidates: list, notes: str | None, k: int, model: str | None = None) -> dict:
+        return {"picks": [{"i": 0, "fit": 91, "why": "topical fit", "risk": "low"}]}
+
+    monkeypatch.setattr(jllm, "rerank", fake_rerank)
+    result = runner.invoke(app, ["find", "-t", GOOD_TEXT])
+    assert result.exit_code == 0
+    assert "topical fit" in result.stdout
+    assert "fit 91" in result.stdout
+    assert "low" in result.stdout
+
+
+def test_find_online_missing_key_is_fatal(fixture_index: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    result = runner.invoke(app, ["find", "-t", GOOD_TEXT])
+    assert result.exit_code != 0
+    assert "NVIDIA_API_KEY is not set" in result.stdout
+    assert "https://build.nvidia.com" in result.stdout
+
+
+def test_find_online_llm_failure_falls_back_to_offline(
+    fixture_index: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
+
+    def boom(text: str, model: str | None = None) -> dict:
+        raise jllm.LLMError("model returned nothing usable")
+
+    monkeypatch.setattr(jllm, "profile", boom)
+    result = runner.invoke(app, ["find", "-t", GOOD_TEXT])
+    assert result.exit_code == 0
+    assert "falling back to offline ranking" in result.stdout
+    assert "Top 5 target journals" in result.stdout
+
+
+def test_find_online_invalid_picks_filled_from_bm25(
+    fixture_index: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
+    monkeypatch.setattr(jllm, "profile", lambda text, model=None: PROFILE)
+
+    def fake_rerank(profile: dict, candidates: list, notes: str | None, k: int, model: str | None = None) -> dict:
+        return {"picks": [{"i": 999, "fit": 90, "why": "w", "risk": "r"}]}
+
+    monkeypatch.setattr(jllm, "rerank", fake_rerank)
+    result = runner.invoke(app, ["find", "-t", GOOD_TEXT, "--verbose"])
+    assert result.exit_code == 0
+    assert "Top 5 target journals" in result.stdout
+    assert "filled from BM25 order" in result.stdout

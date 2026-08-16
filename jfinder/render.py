@@ -79,9 +79,22 @@ def print_results(
     *,
     removed: int = 0,
     built_at: str | None = None,
+    reasons: bool = False,
 ) -> None:
-    """Print the table plus the permanent footer (AGENTS.md §12)."""
+    """Print the table, LLM rationale blocks and the permanent footer (AGENTS.md §12)."""
     console.print(table_for(results, top_k))
+    if reasons:
+        for position, (_, row) in enumerate(results.head(top_k).iterrows(), start=1):
+            why = str(row.get("_why", "")).strip()
+            risk = str(row.get("_risk", "")).strip()
+            if not why and not risk:
+                continue
+            name = str(row["name"])
+            console.print(f"\n{position}. {name:<48} fit {row['fit']}")
+            if why:
+                console.print(f"   ▸ {why}")
+            if risk:
+                console.print(f"   ⚠ {risk}")
     if removed:
         console.print(
             f"  ⚠ {removed} candidates removed as unverified "
