@@ -74,7 +74,7 @@ Top 3 target journals
 
   ⚠ 11 candidates removed as unverified (show with --show-flagged)
   Index built 2026-08-16 · APC data from OpenAlex/DOAJ, list prices only
-  Always verify aims & scope on the journal site before submitting.
+  Always verify aims & scope and current fees on the journal site before submitting.
 ```
 
 ### Filtreler
@@ -98,7 +98,7 @@ gider, stdout yalnızca JSON içerir.
 - Offline (yalnızca BM25): **77/100 (%77)**
 - Online (LLM profil + yeniden sıralama): **95/100 (%95)**
 
-Uyum: önerilen derginin adı/konu etiketleri, çalışmanın alan anahtar kelimelerini içerir.
+Uyum: önerilen derginin adı/konu etiketleri, çalışmanın alan anahtar kelimelerini içerir (anahtar kelime eşleşmesi; insan değerlendirmesi değildir).
 
 ### LLM
 
@@ -121,8 +121,11 @@ dizininde saklanır.
 - Kod: MIT (`LICENSE`)
 - Dergi verisi: OpenAlex (CC0) — ayrıntılar için `DATA.md`
 
-**Not:** Bu araç bir öneri aracıdır, karar aracı değildir. Gönderim öncesinde
-derginin aims & scope'unu kendi sitesinden doğrulayın.
+**Sorumluluk reddi:** Bu araç yalnızca abstract'a göre dergi sıralar; kabul,
+indeks veya uygunluk garantisi vermez. Maliyet/APC bilgileri OpenAlex ve
+DOAJ'dan gelir, güncelliğini yitirmiş ya da hatalı olabilir; "ücretsiz"
+görünen bir dergi ücret talep edebilir. Gönderim öncesinde derginin kendi
+sitesinden aims & scope ve güncel ücretleri doğrulayın.
 
 </details>
 
@@ -196,7 +199,7 @@ Top 3 target journals
 
   ⚠ 11 candidates removed as unverified (show with --show-flagged)
   Index built 2026-08-16 · APC data from OpenAlex/DOAJ, list prices only
-  Always verify aims & scope on the journal site before submitting.
+  Always verify aims & scope and current fees on the journal site before submitting.
 ```
 
 ### Filters
@@ -220,7 +223,7 @@ Field match of the top-5 picks over 20 sample abstracts (Aug 2026):
 - Offline (BM25 only): **77/100 (77%)**
 - Online (LLM profile + rerank): **95/100 (95%)**
 
-Match: the picked journal's name/topic tags contain the paper's field keywords.
+Match: the picked journal's name/topic tags contain the paper's field keywords (a keyword-match proxy, not human evaluation).
 
 ### LLM
 
@@ -242,8 +245,11 @@ No telemetry; nothing else leaves the machine; results live in the local cache.
 - Code: MIT (`LICENSE`)
 - Journal data: OpenAlex (CC0) — see `DATA.md`
 
-**Note:** this is a suggestion tool, not a decision tool — always verify aims &
-scope on the journal site before submitting.
+**Disclaimer:** this tool only ranks journals from an abstract; it guarantees
+no acceptance, indexing, or fit. Cost/APC data comes from OpenAlex and DOAJ
+and may be outdated or wrong — a journal shown as free may charge. Always
+verify aims & scope and current fees on the journal's own site before
+submitting.
 
 </details>
 

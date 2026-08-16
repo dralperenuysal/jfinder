@@ -122,7 +122,9 @@ def _print_footer(removed: int, built_at: str | None) -> None:
             "consider rebuilding: python scripts/build_index.py"
         )
     console.print(f"  Index built {built_at} · APC data from OpenAlex/DOAJ, list prices only")
-    console.print("  Always verify aims & scope on the journal site before submitting.")
+    console.print(
+        "  Always verify aims & scope and current fees on the journal site before submitting."
+    )
 
 
 def print_results(
