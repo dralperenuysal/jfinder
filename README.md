@@ -152,4 +152,4 @@ scope on the journal site before submitting.
 
 ---
 
-**Yazar / Author:** Alperen Uysal, MD, PhD
+**Yazar / Author:** [Alperen Uysal, MD, PhD](https://github.com/dralperenuysal)
