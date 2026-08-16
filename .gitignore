@@ -9,9 +9,8 @@ build/
 .ruff_cache/
 .coverage
 
-# Legacy prototype artifacts — never enter the repo
-data/scimagojr.csv
-results*.csv
+# Legacy prototype scripts and raw data — archived, never tracked
+archive/
 
 # Agent runtime state
 .codewhale/

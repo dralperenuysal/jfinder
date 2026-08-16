@@ -40,9 +40,3 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-# Legacy prototype scripts are not part of the jfinder package.
-exclude = [
-    "scripts/findFreeJournals.py",
-    "scripts/findFreeJournalsOpenAlex.py",
-    "scripts/functions.py",
-]
